@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Amp Football Coach Board (v0 prototype)</title>
+<style>
+:root { --bg:#f4f6f2; --ink:#1b2a1f; --card:#fff; --edge:#cdd6c9; --accent:#14532d; --a:#1d4ed8; --b:#c2410c; }
+* { box-sizing:border-box; }
+body { margin:0; font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif; background:var(--bg); color:var(--ink); }
+header { padding:10px 14px; background:#14301c; color:#fff; }
+header h1 { margin:0; font-size:18px; }
+header p { margin:2px 0 0; font-size:12.5px; opacity:.9; }
+main { display:flex; flex-wrap:wrap; gap:12px; padding:12px; align-items:flex-start; }
+#boardCol { flex:1 1 640px; min-width:300px; }
+#sideCol { flex:0 1 340px; min-width:290px; }
+.card { background:var(--card); border:1px solid var(--edge); border-radius:8px; padding:10px; margin-bottom:12px; }
+.card h2 { margin:0 0 6px; font-size:15px; }
+.bar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:8px; }
+button, select, input[type=text], textarea { font:inherit; }
+button { padding:6px 10px; border:1px solid #8fa08a; background:#eef3ec; border-radius:6px; cursor:pointer; min-height:36px; }
+button:hover { background:#e1ebde; }
+button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+button.danger { border-color:#b91c1c; color:#b91c1c; background:#fff; }
+input[type=text], select, textarea { width:100%; padding:6px 8px; border:1px solid #8fa08a; border-radius:6px; background:#fff; }
+textarea { min-height:70px; resize:vertical; }
+label { display:block; font-size:13px; margin:6px 0 2px; font-weight:600; }
+#boardWrap { background:#0f2a14; border-radius:8px; padding:6px; }
+svg#pitch { width:100%; height:auto; display:block; touch-action:none; user-select:none; -webkit-user-select:none; }
+.token { cursor:grab; }
+.hint { font-size:12.5px; color:#44544a; margin:4px 0 0; }
+.badge { display:inline-block; font-size:11.5px; padding:1px 6px; border-radius:10px; border:1px solid #8fa08a; background:#f1f5ef; margin-left:4px; }
+.badge.unrev { border-color:#b45309; color:#7c3a06; background:#fff7ed; }
+.badge.rev { border-color:#166534; color:#14532d; background:#ecfdf3; }
+ul.lib { list-style:none; margin:0; padding:0; }
+ul.lib li { border-top:1px solid var(--edge); padding:6px 0; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+ul.lib li .nm { flex:1 1 140px; font-weight:600; overflow-wrap:anywhere; min-width:0; }
+ul.lib h3 { margin:8px 0 2px; font-size:13px; color:#44544a; }
+details { margin:0; }
+details summary { cursor:pointer; font-weight:600; }
+details ul { margin:6px 0 0 18px; padding:0; font-size:13.5px; }
+.warn { border-left:4px solid #b45309; background:#fff7ed; padding:6px 8px; font-size:13px; border-radius:4px; margin:6px 0; }
+#frameInfo { font-weight:600; min-width:92px; text-align:center; }
+.sr { position:absolute; left:-9999px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Amp Football Coach Board <span style="font-weight:400;font-size:13px">v0 prototype for coach feedback</span></h1>
+  <p>Standard crutch-based amputee football: 7v7 on a 60 x 40 m pitch. Plays are stored only on this device. The page sends nothing; a play leaves your device only if you export a file and choose to send it.</p>
+</header>
+<main>
+  <section id="boardCol">
+    <div class="card">
+      <div class="bar" role="toolbar" aria-label="Board tools">
+        <button id="tMove" class="on" type="button">Move</button>
+        <button id="tRun" type="button">Run arrow</button>
+        <button id="tPass" type="button">Pass arrow</button>
+        <button id="tUndo" type="button">Undo last arrow</button>
+        <button id="tClear" type="button">Clear arrows</button>
+        <button id="tReset" type="button">Reset positions</button>
+        <label style="display:inline-flex;gap:4px;align-items:center;margin:0;font-weight:400"><input id="showB" type="checkbox" checked> Show opponent</label>
+      </div>
+      <div id="boardWrap">
+        <svg id="pitch" viewBox="-3 -3 66 46" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Amputee football pitch, 60 by 40 metres">
+          <defs>
+            <marker id="headRun" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#fde047"/></marker>
+            <marker id="headPass" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#ffffff"/></marker>
+          </defs>
+          <rect x="-3" y="-3" width="66" height="46" fill="#2f6b2f"/>
+          <g id="markings" fill="none" stroke="#ffffff" stroke-width="0.25"></g>
+          <g id="arrows"></g>
+          <g id="tokens"></g>
+          <line id="preview" x1="0" y1="0" x2="0" y2="0" stroke="#fde047" stroke-width="0.35" visibility="hidden"/>
+        </svg>
+      </div>
+      <div class="bar" style="margin-top:8px" role="toolbar" aria-label="Frames and playback">
+        <button id="fPrev" type="button" aria-label="Previous frame">&lsaquo; Prev</button>
+        <span id="frameInfo" aria-live="polite">Frame 1 / 1</span>
+        <button id="fNext" type="button" aria-label="Next frame">Next &rsaquo;</button>
+        <button id="fAdd" type="button">Add frame (copy)</button>
+        <button id="fDel" type="button" class="danger">Delete frame</button>
+        <button id="fPlay" type="button">Play</button>
+        <label style="display:inline-flex;gap:4px;align-items:center;margin:0;font-weight:400"><input id="loop" type="checkbox"> Loop</label>
+      </div>
+      <p class="hint">Arrows drawn in a frame show the movement that leads to the next frame. Yellow solid = run, white dashed = pass. Tokens: blue = your team (GK = goalkeeper, 1 to 6 = outfield players, role labels only, no names), orange = opponent, white = ball. The starting spread is not a recommended formation.</p>
+    </div>
+
+    <div class="card">
+      <details>
+        <summary>Rules reference (unverified summary, check the current WAFF Laws)</summary>
+        <div class="warn">Summarised from two WAFF Laws of the Game PDFs by an automated reader, not checked against the PDFs by a person. The two versions disagree on some numbers (listed below). Confirm which version your competition uses.</div>
+        <ul>
+          <li>Pitch 60 m x 40 m, plus or minus 5 m depending on venue. Centre circle radius 6 m. Goal area 10 m wide x 8 m deep. Penalty mark 8 m from the goal line. Goal 5 m wide x 2.2 m high. The penalty area is mentioned in Law 9 but its size is not given in the text, so it is not drawn here (Laws 1.2, 1.3, 1.4, 2.2).</li>
+          <li>7 players per side including the goalkeeper. A match may not start with fewer than 5 outfield players, a goalkeeper and a reserve goalkeeper (Law 3).</li>
+          <li>Two periods of 25 minutes, one time-out per team per half of at most 1 minute, half-time at most 10 minutes (Law 6.1).</li>
+          <li>Substitutions only at a stoppage with the referee's permission, at most 2 players at a time, substituted players may return (Law 3.6).</li>
+          <li><b>Versions differ:</b> substitutes named 5 (2017 version) or 6 (later upload); squad 15 on the roster with 12 dressed (2017) or 13 maximum (later upload). England domestic rules list a squad of 10 maximum. Enter your own competition's numbers.</li>
+          <li>Crutches are treated as extensions of the arms. Intentionally using a crutch to control or direct the ball is a handling violation (direct free kick). Defender in own penalty area: penalty kick. Attacker in the penalty area: defending side takes a direct free kick from anywhere in the goal area (Laws 9.1.1 to 9.1.3).</li>
+          <li>No offside in amputee football (England Football and Wikipedia rule summaries).</li>
+        </ul>
+      </details>
+    </div>
+  </section>
+
+  <aside id="sideCol">
+    <div class="card">
+      <h2>Play card</h2>
+      <label for="pName">Name</label>
+      <input id="pName" type="text" maxlength="80" placeholder="e.g. Kick-in, own half, short option">
+      <label for="pSit">Situation</label>
+      <select id="pSit">
+        <option value="open">Open play pattern</option>
+        <option value="buildup">Build-up</option>
+        <option value="press">Pressing</option>
+        <option value="kickin">Kick-in</option>
+        <option value="corner">Corner</option>
+        <option value="freekick">Free kick</option>
+        <option value="gkrestart">Goalkeeper restart</option>
+        <option value="other">Other</option>
+      </select>
+      <label for="pNotes">Assignments and coaching points (per role)</label>
+      <textarea id="pNotes" maxlength="2000" placeholder="Who does what, trigger for calling it, variations"></textarea>
+      <label for="pSrc">Source</label>
+      <select id="pSrc">
+        <option value="own">Own idea</option>
+        <option value="coach">Contributed by a coach</option>
+        <option value="published">Published source (name it in the notes)</option>
+      </select>
+      <label for="pRev">Review status</label>
+      <select id="pRev">
+        <option value="unreviewed">Unreviewed</option>
+        <option value="coach">Reviewed by another coach</option>
+      </select>
+      <p class="hint">Anything involving player load, fatigue or crutch strain needs a physiotherapist, not a coach, to review it.</p>
+      <div class="bar" style="margin-top:8px">
+        <button id="pSave" type="button" class="on">Save to library</button>
+        <button id="pNew" type="button">New play</button>
+        <button id="pPng" type="button">Export PNG</button>
+      </div>
+      <div id="msg" class="hint" role="status" aria-live="polite"></div>
+    </div>
+
+    <div class="card">
+      <h2>Library (this device only)</h2>
+      <div id="lib"></div>
+      <div class="bar" style="margin-top:8px">
+        <button id="lExport" type="button">Export library (JSON)</button>
+        <button id="lImport" type="button">Import JSON</button>
+        <input id="lFile" class="sr" type="file" accept="application/json,.json" aria-label="Import library file">
+      </div>
+      <p class="hint">Clearing browser data deletes the library. Export a copy to share plays or keep a backup.</p>
+    </div>
+    <div class="card" id="feedbackCard">
+      <h2>Share feedback or plays</h2>
+      <ol style="margin:0 0 6px 18px;padding:0;font-size:13.5px">
+        <li>Press <b>Save to library</b> for each play you want to share.</li>
+        <li>Press <b>Export library (JSON)</b>, then send the file to <span id="contactSlot"></span>, with a few lines on what was missing or confusing.</li>
+      </ol>
+      <p class="hint">Use role labels only. Do not put player names, injuries or private club details in the notes. Nothing you send is published without asking you first.</p>
+    </div>
+  </aside>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var NS = 'http://www.w3.org/2000/svg';
+  var STORE = 'ampcoach.v0.plays';
+  var SIT = { open:'Open play pattern', buildup:'Build-up', press:'Pressing', kickin:'Kick-in', corner:'Corner', freekick:'Free kick', gkrestart:'Goalkeeper restart', other:'Other' };
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---------- model ----------
+  var IDS = [];
+  for (var i = 0; i < 7; i++) IDS.push('A' + i);
+  for (i = 0; i < 7; i++) IDS.push('B' + i);
+  IDS.push('ball');
+
+  function defaultTokens() {
+    var a = [[3,20],[11,12],[11,28],[19,10],[19,30],[25,16],[25,24]];
+    var t = {};
+    for (var k = 0; k < 7; k++) {
+      t['A' + k] = { x: a[k][0], y: a[k][1] };
+      t['B' + k] = { x: 60 - a[k][0], y: a[k][1] };
+    }
+    t.ball = { x: 30, y: 20 };
+    return t;
+  }
+  function newFrame() { return { tokens: defaultTokens(), arrows: [] }; }
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+
+  var play = { id: null, name: '', situation: 'open', notes: '', source: 'own', review: 'unreviewed', frames: [newFrame()] };
+  var cur = 0;
+  var tool = 'move';
+  var animating = false;
+  var anim = null;
+
+  // ---------- pitch markings (WAFF Laws 1.x, 2.2; penalty area size not given in the text so not drawn) ----------
+  function el(name, attrs, parent) {
+    var e = document.createElementNS(NS, name);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function drawPitch() {
+    var g = $('markings');
+    el('rect', { x: 0, y: 0, width: 60, height: 40 }, g);
+    el('line', { x1: 30, y1: 0, x2: 30, y2: 40 }, g);
+    el('circle', { cx: 30, cy: 20, r: 6 }, g);
+    el('circle', { cx: 30, cy: 20, r: 0.3, fill: '#fff' }, g);
+    // goal areas: 10 m wide x 8 m deep, centred
+    el('rect', { x: 0, y: 15, width: 8, height: 10 }, g);
+    el('rect', { x: 52, y: 15, width: 8, height: 10 }, g);
+    // penalty marks 8 m from goal line
+    el('circle', { cx: 8, cy: 20, r: 0.3, fill: '#fff' }, g);
+    el('circle', { cx: 52, cy: 20, r: 0.3, fill: '#fff' }, g);
+    // goals 5 m wide, drawn outside the goal line
+    el('rect', { x: -1.2, y: 17.5, width: 1.2, height: 5, 'stroke-width': 0.35 }, g);
+    el('rect', { x: 60, y: 17.5, width: 1.2, height: 5, 'stroke-width': 0.35 }, g);
+    // corner arcs radius 1.5 m
+    el('path', { d: 'M1.5,0 A1.5,1.5 0 0 1 0,1.5' }, g);
+    el('path', { d: 'M58.5,0 A1.5,1.5 0 0 0 60,1.5' }, g);
+    el('path', { d: 'M0,38.5 A1.5,1.5 0 0 1 1.5,40' }, g);
+    el('path', { d: 'M60,38.5 A1.5,1.5 0 0 0 58.5,40' }, g);
+  }
+
+  // ---------- rendering ----------
+  function label(id) { return id === 'ball' ? '' : (id.charAt(1) === '0' ? 'GK' : id.charAt(1)); }
+  function render(positions, arrows) {
+    var tg = $('tokens');
+    while (tg.firstChild) tg.removeChild(tg.firstChild);
+    var showB = $('showB').checked;
+    IDS.forEach(function (id) {
+      if (id.charAt(0) === 'B' && !showB) return;
+      var p = positions[id];
+      var g = el('g', { 'class': 'token', 'data-id': id, transform: 'translate(' + p.x + ',' + p.y + ')' }, tg);
+      if (id === 'ball') {
+        el('circle', { r: 0.9, fill: '#fff', stroke: '#111', 'stroke-width': 0.2 }, g);
+      } else {
+        el('circle', { r: 1.6, fill: id.charAt(0) === 'A' ? '#1d4ed8' : '#c2410c', stroke: '#fff', 'stroke-width': 0.2 }, g);
+        var t = el('text', { x: 0, y: 0.6, 'text-anchor': 'middle', 'font-size': 1.7, fill: '#fff', 'font-weight': 700, 'pointer-events': 'none' }, g);
+        t.textContent = label(id);
+      }
+    });
+    var ag = $('arrows');
+    while (ag.firstChild) ag.removeChild(ag.firstChild);
+    arrows.forEach(function (a) {
+      var isPass = a.kind === 'pass';
+      el('line', {
+        x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2,
+        stroke: isPass ? '#ffffff' : '#fde047', 'stroke-width': 0.35,
+        'stroke-dasharray': isPass ? '1,0.8' : 'none',
+        'marker-end': 'url(#' + (isPass ? 'headPass' : 'headRun') + ')'
+      }, ag);
+    });
+  }
+  function renderCur() {
+    var f = play.frames[cur];
+    render(f.tokens, f.arrows);
+    $('frameInfo').textContent = 'Frame ' + (cur + 1) + ' / ' + play.frames.length;
+  }
+
+  // ---------- pointer handling ----------
+  var svg = $('pitch');
+  function svgPoint(ev) {
+    var pt = svg.createSVGPoint();
+    pt.x = ev.clientX; pt.y = ev.clientY;
+    var p = pt.matrixTransform(svg.getScreenCTM().inverse());
+    return { x: p.x, y: p.y };
+  }
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  var drag = null;
+  svg.addEventListener('pointerdown', function (ev) {
+    if (animating) return;
+    var p = svgPoint(ev);
+    var tok = ev.target.closest ? ev.target.closest('.token') : null;
+    if (tool === 'move' && tok) {
+      var id = tok.getAttribute('data-id');
+      var cp = play.frames[cur].tokens[id];
+      drag = { type: 'token', id: id, dx: cp.x - p.x, dy: cp.y - p.y };
+      svg.setPointerCapture(ev.pointerId);
+      ev.preventDefault();
+    } else if (tool === 'run' || tool === 'pass') {
+      drag = { type: 'arrow', x1: clamp(p.x, -2, 62), y1: clamp(p.y, -2, 42) };
+      var pv = $('preview');
+      pv.setAttribute('x1', drag.x1); pv.setAttribute('y1', drag.y1);
+      pv.setAttribute('x2', drag.x1); pv.setAttribute('y2', drag.y1);
+      pv.setAttribute('stroke', tool === 'pass' ? '#ffffff' : '#fde047');
+      pv.setAttribute('stroke-dasharray', tool === 'pass' ? '1,0.8' : 'none');
+      pv.setAttribute('visibility', 'visible');
+      svg.setPointerCapture(ev.pointerId);
+      ev.preventDefault();
+    }
+  });
+  svg.addEventListener('pointermove', function (ev) {
+    if (!drag) return;
+    var p = svgPoint(ev);
+    if (drag.type === 'token') {
+      var t = play.frames[cur].tokens[drag.id];
+      t.x = clamp(p.x + drag.dx, -1.5, 61.5);
+      t.y = clamp(p.y + drag.dy, -1.5, 41.5);
+      renderCur();
+    } else {
+      var pv = $('preview');
+      pv.setAttribute('x2', clamp(p.x, -2, 62));
+      pv.setAttribute('y2', clamp(p.y, -2, 42));
+    }
+  });
+  function endDrag(ev) {
+    if (!drag) return;
+    if (drag.type === 'arrow') {
+      var p = svgPoint(ev);
+      var x2 = clamp(p.x, -2, 62), y2 = clamp(p.y, -2, 42);
+      var len = Math.hypot(x2 - drag.x1, y2 - drag.y1);
+      if (len > 1.5) {
+        play.frames[cur].arrows.push({ x1: drag.x1, y1: drag.y1, x2: x2, y2: y2, kind: tool === 'pass' ? 'pass' : 'run' });
+      }
+      $('preview').setAttribute('visibility', 'hidden');
+      renderCur();
+    }
+    drag = null;
+  }
+  svg.addEventListener('pointerup', endDrag);
+  svg.addEventListener('pointercancel', endDrag);
+
+  // ---------- tools ----------
+  function setTool(t) {
+    tool = t;
+    $('tMove').classList.toggle('on', t === 'move');
+    $('tRun').classList.toggle('on', t === 'run');
+    $('tPass').classList.toggle('on', t === 'pass');
+  }
+  $('tMove').onclick = function () { setTool('move'); };
+  $('tRun').onclick = function () { setTool('run'); };
+  $('tPass').onclick = function () { setTool('pass'); };
+  $('tUndo').onclick = function () { if (animating) return; play.frames[cur].arrows.pop(); renderCur(); };
+  $('tClear').onclick = function () { if (animating) return; play.frames[cur].arrows = []; renderCur(); };
+  $('tReset').onclick = function () { if (animating) return; play.frames[cur].tokens = defaultTokens(); renderCur(); };
+  $('showB').onchange = function () { if (!animating) renderCur(); };
+
+  // ---------- frames and playback ----------
+  $('fPrev').onclick = function () { if (animating) return; if (cur > 0) { cur--; renderCur(); } };
+  $('fNext').onclick = function () { if (animating) return; if (cur < play.frames.length - 1) { cur++; renderCur(); } };
+  $('fAdd').onclick = function () {
+    if (animating) return;
+    var f = clone(play.frames[cur]);
+    f.arrows = [];
+    play.frames.splice(cur + 1, 0, f);
+    cur++;
+    renderCur();
+  };
+  $('fDel').onclick = function () {
+    if (animating) return;
+    if (play.frames.length < 2) { say('A play needs at least one frame.'); return; }
+    play.frames.splice(cur, 1);
+    if (cur >= play.frames.length) cur = play.frames.length - 1;
+    renderCur();
+  };
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function ease(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+  function stopPlay() {
+    animating = false;
+    if (anim) { cancelAnimationFrame(anim.raf); anim = null; }
+    $('fPlay').textContent = 'Play';
+    renderCur();
+  }
+  $('fPlay').onclick = function () {
+    if (animating) { stopPlay(); return; }
+    if (play.frames.length < 2) { say('Add a second frame to play an animation.'); return; }
+    animating = true;
+    $('fPlay').textContent = 'Stop';
+    var seg = 0, SEG_MS = 1300, start = null;
+    cur = 0;
+    anim = { raf: 0 };
+    function step(ts) {
+      if (!animating) return;
+      if (start === null) start = ts;
+      var t = Math.min(1, (ts - start) / SEG_MS);
+      var A = play.frames[seg], B = play.frames[seg + 1];
+      var pos = {};
+      IDS.forEach(function (id) {
+        pos[id] = { x: lerp(A.tokens[id].x, B.tokens[id].x, ease(t)), y: lerp(A.tokens[id].y, B.tokens[id].y, ease(t)) };
+      });
+      render(pos, A.arrows);
+      $('frameInfo').textContent = 'Frame ' + (seg + 1) + ' / ' + play.frames.length;
+      if (t >= 1) {
+        seg++; start = null; cur = seg;
+        if (seg >= play.frames.length - 1) {
+          if ($('loop').checked) { seg = 0; cur = 0; }
+          else { cur = play.frames.length - 1; stopPlay(); return; }
+        }
+      }
+      anim.raf = requestAnimationFrame(step);
+    }
+    anim.raf = requestAnimationFrame(step);
+  };
+
+  // ---------- play card + library ----------
+  function say(m) { $('msg').textContent = m; }
+  function readCard() {
+    play.name = $('pName').value.trim();
+    play.situation = $('pSit').value;
+    play.notes = $('pNotes').value;
+    play.source = $('pSrc').value;
+    play.review = $('pRev').value;
+  }
+  function writeCard() {
+    $('pName').value = play.name;
+    $('pSit').value = play.situation;
+    $('pNotes').value = play.notes;
+    $('pSrc').value = play.source;
+    $('pRev').value = play.review;
+  }
+  function loadLib() {
+    try { var r = JSON.parse(localStorage.getItem(STORE) || '[]'); return Array.isArray(r) ? r : []; }
+    catch (e) { return []; }
+  }
+  function saveLib(arr) {
+    try { localStorage.setItem(STORE, JSON.stringify(arr)); return true; }
+    catch (e) { say('Could not save to this browser (storage blocked or full). Use Export library (JSON) instead.'); return false; }
+  }
+  function uid() { return 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+  $('pSave').onclick = function () {
+    if (animating) stopPlay();
+    readCard();
+    if (!play.name) { say('Give the play a name first.'); $('pName').focus(); return; }
+    var lib = loadLib();
+    if (!play.id) play.id = uid();
+    play.updated = new Date().toISOString();
+    var copy = clone(play);
+    var idx = -1;
+    lib.forEach(function (p, k) { if (p.id === play.id) idx = k; });
+    if (idx >= 0) lib[idx] = copy; else lib.push(copy);
+    if (saveLib(lib)) say('Saved "' + play.name + '" on this device.');
+    renderLib();
+  };
+  $('pNew').onclick = function () {
+    if (animating) stopPlay();
+    play = { id: null, name: '', situation: 'open', notes: '', source: 'own', review: 'unreviewed', frames: [newFrame()] };
+    cur = 0; writeCard(); renderCur(); say('New play.');
+  };
+  function renderLib() {
+    var box = $('lib');
+    box.textContent = '';
+    var lib = loadLib();
+    if (!lib.length) { var p = document.createElement('p'); p.className = 'hint'; p.textContent = 'No saved plays yet.'; box.appendChild(p); return; }
+    Object.keys(SIT).forEach(function (key) {
+      var items = lib.filter(function (x) { return x.situation === key; });
+      if (!items.length) return;
+      var h = document.createElement('h3'); h.textContent = SIT[key]; box.appendChild(h);
+      var ul = document.createElement('ul'); ul.className = 'lib';
+      items.forEach(function (it) {
+        var li = document.createElement('li');
+        var nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = it.name;
+        var b = document.createElement('span');
+        b.className = 'badge ' + (it.review === 'coach' ? 'rev' : 'unrev');
+        b.textContent = it.review === 'coach' ? 'coach-reviewed' : 'unreviewed';
+        var lb = document.createElement('button'); lb.type = 'button'; lb.textContent = 'Load';
+        lb.onclick = function () {
+          if (animating) stopPlay();
+          play = clone(it); cur = 0; writeCard(); renderCur(); say('Loaded "' + it.name + '".');
+        };
+        var db = document.createElement('button'); db.type = 'button'; db.className = 'danger'; db.textContent = 'Delete';
+        db.onclick = function () {
+          if (!confirm('Delete "' + it.name + '" from this device?')) return;
+          saveLib(loadLib().filter(function (x) { return x.id !== it.id; }));
+          if (play.id === it.id) play.id = null;
+          renderLib();
+        };
+        li.appendChild(nm); li.appendChild(b); li.appendChild(lb); li.appendChild(db);
+        ul.appendChild(li);
+      });
+      box.appendChild(ul);
+    });
+  }
+
+  // ---------- export / import ----------
+  function download(name, blob) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+  }
+  $('lExport').onclick = function () {
+    var data = { format: 'ampcoach-plays', version: 0, exported: new Date().toISOString(), plays: loadLib() };
+    download('ampcoach-library-' + new Date().toISOString().slice(0, 10) + '.json', new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' }));
+  };
+  $('lImport').onclick = function () { $('lFile').click(); };
+  function num(v, d) { v = Number(v); return isFinite(v) ? clamp(v, -5, 65) : d; }
+  function sanitizePlay(p) {
+    if (!p || typeof p !== 'object' || !Array.isArray(p.frames) || !p.frames.length) return null;
+    var out = {
+      id: uid(),
+      name: String(p.name || 'Imported play').slice(0, 80),
+      situation: SIT[p.situation] ? p.situation : 'other',
+      notes: String(p.notes || '').slice(0, 2000),
+      source: ['own', 'coach', 'published'].indexOf(p.source) >= 0 ? p.source : 'coach',
+      review: p.review === 'coach' ? 'coach' : 'unreviewed',
+      frames: []
+    };
+    p.frames.slice(0, 40).forEach(function (f) {
+      var d = defaultTokens(), t = {};
+      IDS.forEach(function (id) {
+        var s = f && f.tokens && f.tokens[id];
+        t[id] = s ? { x: num(s.x, d[id].x), y: num(s.y, d[id].y) } : d[id];
+      });
+      var arrows = [];
+      ((f && f.arrows) || []).slice(0, 60).forEach(function (a) {
+        if (a) arrows.push({ x1: num(a.x1, 0), y1: num(a.y1, 0), x2: num(a.x2, 0), y2: num(a.y2, 0), kind: a.kind === 'pass' ? 'pass' : 'run' });
+      });
+      out.frames.push({ tokens: t, arrows: arrows });
+    });
+    return out;
+  }
+  $('lFile').onchange = function (ev) {
+    var file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { say('File too large (limit 2 MB).'); return; }
+    var r = new FileReader();
+    r.onload = function () {
+      try {
+        var data = JSON.parse(r.result);
+        var list = Array.isArray(data) ? data : data.plays;
+        if (!Array.isArray(list)) throw new Error('no plays');
+        var lib = loadLib(), n = 0;
+        list.slice(0, 200).forEach(function (p) { var s = sanitizePlay(p); if (s) { lib.push(s); n++; } });
+        if (saveLib(lib)) say('Imported ' + n + ' play(s). Imported plays are marked unreviewed unless the file says coach-reviewed.');
+        renderLib();
+      } catch (e) { say('Could not read that file as a play library.'); }
+      $('lFile').value = '';
+    };
+    r.readAsText(file);
+  };
+
+  $('pPng').onclick = function () {
+    if (animating) stopPlay();
+    readCard();
+    var clone2 = svg.cloneNode(true);
+    var pv = clone2.querySelector('#preview'); if (pv) pv.remove();
+    clone2.setAttribute('xmlns', NS);
+    clone2.setAttribute('width', 1320); clone2.setAttribute('height', 920);
+    var xml = new XMLSerializer().serializeToString(clone2);
+    var img = new Image();
+    img.onload = function () {
+      var c = document.createElement('canvas');
+      c.width = 1320; c.height = 920 + 70;
+      var x = c.getContext('2d');
+      x.fillStyle = '#ffffff'; x.fillRect(0, 0, c.width, c.height);
+      x.fillStyle = '#14301c'; x.font = 'bold 30px sans-serif';
+      x.fillText((play.name || 'Untitled play') + '  (frame ' + (cur + 1) + ' of ' + play.frames.length + ')', 16, 44);
+      x.drawImage(img, 0, 70, 1320, 920);
+      c.toBlob(function (b) { if (b) download((play.name || 'play').replace(/[^\w\-]+/g, '_') + '.png', b); }, 'image/png');
+    };
+    img.onerror = function () { say('PNG export failed in this browser.'); };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
+  };
+
+  // ---------- init ----------
+  var CONTACT = ''; // OPEN: set the public contact address before publishing
+  (function () {
+    var slot = $('contactSlot');
+    if (CONTACT) {
+      var a = document.createElement('a');
+      a.href = 'mailto:' + CONTACT; a.textContent = CONTACT;
+      slot.appendChild(a);
+    } else {
+      slot.textContent = '[contact address not set yet]';
+    }
+  })();
+  drawPitch();
+  writeCard();
+  renderCur();
+  renderLib();
+  window.__ampcoach = { get play() { return play; }, get cur() { return cur; } }; // test hook, no data leaves the page
+})();
+</script>
+</body>
+</html>
