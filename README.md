@@ -27,7 +27,7 @@ Plays are stored in your browser's local storage on your own device. The page ma
 
 ## Sharing feedback
 
-Contact address: **[OPEN: to be added before this page is promoted]**
+Send exported plays and feedback to AmpFootballFit@keemail.me.
 
 ## Planned
 
