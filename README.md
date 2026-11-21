@@ -15,7 +15,7 @@ Open `index.html` in any current browser. No install, no account, no dependencie
 
 ## Privacy
 
-Plays are stored in your browser's local storage on your own device. The page makes no network requests. A play leaves your device only if you export a file and choose to send it to someone. Use role labels only. Do not put player names, injuries or private club details in the notes.
+Plays are stored in your browser's local storage on your own device. The page makes no network requests. A play leaves your device only if you export a file and choose to send it to someone. The optional "I use this board" button opens a draft email in your own email app; nothing is sent unless you press send there. Use role labels only. Do not put player names, injuries or private club details in the notes.
 
 ## Known limits
 

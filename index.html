@@ -42,6 +42,8 @@ details ul { margin:6px 0 0 18px; padding:0; font-size:13.5px; }
 .warn { border-left:4px solid #b45309; background:#fff7ed; padding:6px 8px; font-size:13px; border-radius:4px; margin:6px 0; }
 #frameInfo { font-weight:600; min-width:92px; text-align:center; }
 .sr { position:absolute; left:-9999px; }
+a.btnlink { display:inline-block; padding:8px 12px; border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:6px; text-decoration:none; font-weight:600; min-height:36px; }
+a.btnlink:hover { background:#0f3f22; }
 </style>
 </head>
 <body>
@@ -173,6 +175,10 @@ details ul { margin:6px 0 0 18px; padding:0; font-size:13.5px; }
         <li>Press <b>Export library (JSON)</b>, then send the file to <span id="contactSlot"></span>, with a few lines on what was missing or confusing.</li>
       </ol>
       <p class="hint">Use role labels only. Do not put player names, injuries or private club details in the notes. Nothing you send is published without asking you first.</p>
+      <h2 style="margin-top:12px">Tell me you use this board (optional)</h2>
+      <p class="hint" style="margin-top:0">Knowing who uses it helps me decide what to build next. This is voluntary and the board works the same if you skip it.</p>
+      <p style="margin:8px 0"><a id="iUseBtn" class="btnlink" href="#">I use this board: send a short email</a></p>
+      <p class="hint">The button opens a draft in your email app. Nothing is sent until you press send there. I receive your email address and whatever you type, use it to reply and to count users, and delete it when you ask. If no email app opens, write to <span id="iUseAddr"></span>.</p>
     </div>
   </aside>
 </main>
@@ -583,6 +589,13 @@ details ul { margin:6px 0 0 18px; padding:0; font-size:13.5px; }
     } else {
       slot.textContent = '[contact address not set yet]';
     }
+  })();
+  (function () {
+    var btn = $('iUseBtn'), addr = $('iUseAddr');
+    var subject = 'I use AmpCoachKit';
+    var body = 'Hello,\n\nI use the AmpCoachKit board.\n\nClub or team (optional):\nMy role (coach, assistant, other):\nCountry (optional):\n\nPlease do not include player names, injuries or other health information.\n';
+    btn.href = 'mailto:' + CONTACT + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+    addr.textContent = CONTACT;
   })();
   drawPitch();
   writeCard();
