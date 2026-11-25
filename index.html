@@ -167,7 +167,15 @@ a.btnlink:hover { background:#0f3f22; }
         <input id="lFile" class="sr" type="file" aria-label="Import library file">
       </div>
       <div id="libMsg" class="hint" role="status" aria-live="polite"></div>
-      <p class="hint">Clearing browser data deletes the library. Export a copy to share plays or keep a backup.</p>
+      <div id="bkBox" style="margin-top:8px">
+        <div class="bar" style="margin-bottom:4px">
+          <button id="bkLink" type="button">Link a backup file</button>
+          <button id="bkUnlink" type="button" hidden>Stop using backup file</button>
+        </div>
+        <p id="bkInfo" class="hint"></p>
+      </div>
+      <div id="bkRemind" class="hint" role="status" aria-live="polite"></div>
+      <p class="hint">Your plays are stored only in this browser. Clearing browser data deletes them. A linked backup file or Export library (JSON) gives you a copy you can keep or send to someone.</p>
     </div>
     <div class="card" id="feedbackCard">
       <h2>Share feedback or plays</h2>
@@ -438,7 +446,7 @@ a.btnlink:hover { background:#0f3f22; }
     catch (e) { return []; }
   }
   function saveLib(arr) {
-    try { localStorage.setItem(STORE, JSON.stringify(arr)); return true; }
+    try { localStorage.setItem(STORE, JSON.stringify(arr)); markChanged(); backupLib(); return true; }
     catch (e) { say('Could not save to this browser (storage blocked or full). Use Export library (JSON) instead.'); return false; }
   }
   function uid() { return 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
@@ -505,9 +513,107 @@ a.btnlink:hover { background:#0f3f22; }
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
   }
+  function libData() { return { format: 'ampcoach-plays', version: 0, exported: new Date().toISOString(), plays: loadLib() }; }
+
+  // ---------- backup reminder (all browsers) ----------
+  var K_CHG = STORE + '.changesSinceBackup', K_LAST = STORE + '.lastBackup';
+  function kGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function kSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function markChanged() { kSet(K_CHG, String((Number(kGet(K_CHG)) || 0) + 1)); showRemind(); }
+  function markBackedUp() { kSet(K_CHG, '0'); kSet(K_LAST, new Date().toISOString()); showRemind(); }
+  function showRemind() {
+    var box = $('bkRemind'), n = Number(kGet(K_CHG)) || 0, last = kGet(K_LAST);
+    var lastTxt = last ? new Date(last).toLocaleString() : '';
+    box.className = 'hint';
+    if (!loadLib().length && !n) { box.textContent = ''; return; }
+    if (n > 0) {
+      box.className = 'warn';
+      box.textContent = n + ' change(s) to the library since your last backup' + (lastTxt ? ' (' + lastTxt + ')' : '') +
+        '. Press Export library (JSON) to keep a copy.';
+    } else {
+      box.textContent = lastTxt ? 'Library backed up ' + lastTxt + '.' : '';
+    }
+  }
+
+  // ---------- linked backup file (File System Access API: Chrome and Edge on a computer) ----------
+  // The file handle is kept in IndexedDB on this device. The file is written on this device only; nothing is sent.
+  var BK_OK = typeof window.showSaveFilePicker === 'function';
+  var bkHandle = null;
+  function idb(mode, fn) {
+    return new Promise(function (res, rej) {
+      if (!window.indexedDB) { rej(new Error('no indexedDB')); return; }
+      var rq = indexedDB.open('ampcoach.v0', 1);
+      rq.onupgradeneeded = function () { rq.result.createObjectStore('kv'); };
+      rq.onerror = function () { rej(rq.error); };
+      rq.onsuccess = function () {
+        var db = rq.result, tx, out;
+        try { tx = db.transaction('kv', mode); out = fn(tx.objectStore('kv')); }
+        catch (e) { db.close(); rej(e); return; }
+        tx.oncomplete = function () { db.close(); res(out && out.result); };
+        tx.onerror = function () { db.close(); rej(tx.error); };
+      };
+    });
+  }
+  function bkShow(extra) {
+    if (!BK_OK) {
+      $('bkLink').hidden = true; $('bkUnlink').hidden = true;
+      $('bkInfo').textContent = 'This browser cannot keep a linked backup file (Chrome or Edge on a computer can). Use Export library (JSON) to keep a copy.';
+      return;
+    }
+    $('bkLink').hidden = !!bkHandle; $('bkUnlink').hidden = !bkHandle;
+    $('bkInfo').textContent = (bkHandle
+      ? 'Backup file: ' + bkHandle.name + '. It is rewritten every time the library changes. After a browser restart, the browser asks once for permission to write to it.'
+      : 'No backup file linked. Link one to keep a copy of the library on this computer that updates by itself.') + (extra ? ' ' + extra : '');
+  }
+  function backupLib() {
+    if (!bkHandle) return Promise.resolve(false);
+    var h = bkHandle;
+    var opts = { mode: 'readwrite' };
+    return Promise.resolve(h.queryPermission ? h.queryPermission(opts) : 'granted')
+      .then(function (p) { return p === 'granted' ? p : (h.requestPermission ? h.requestPermission(opts) : p); })
+      .then(function (p) {
+        if (p !== 'granted') throw new Error('permission');
+        return h.createWritable();
+      })
+      .then(function (w) { return w.write(JSON.stringify(libData(), null, 1)).then(function () { return w.close(); }); })
+      .then(function () { markBackedUp(); bkShow('Last written ' + new Date().toLocaleTimeString() + '.'); return true; })
+      .catch(function (e) {
+        bkShow('');
+        libSay(e && e.message === 'permission'
+          ? 'Saved in this browser, but the backup file was not updated: permission to write it was refused.'
+          : 'Saved in this browser, but the backup file could not be written. Link the file again or use Export library (JSON).');
+        return false;
+      });
+  }
+  $('bkLink').onclick = function () {
+    if (!BK_OK) return;
+    window.showSaveFilePicker({
+      suggestedName: 'ampcoach-library.json',
+      types: [{ description: 'AmpCoachKit library', accept: { 'application/json': ['.json'] } }]
+    }).then(function (h) {
+      bkHandle = h;
+      return idb('readwrite', function (st) { return st.put(h, 'backupHandle'); })
+        .catch(function () { libSay('The file is linked for this session only; this browser could not remember it.'); });
+    }).then(function () { return backupLib(); })
+      .catch(function (e) { if (!(e && e.name === 'AbortError')) libSay('Could not link a backup file in this browser.'); });
+  };
+  $('bkUnlink').onclick = function () {
+    bkHandle = null;
+    idb('readwrite', function (st) { return st.delete('backupHandle'); }).catch(function () {});
+    bkShow('The file itself is not deleted.');
+  };
+  function bkInit() {
+    bkShow('');
+    if (!BK_OK) return;
+    idb('readonly', function (st) { return st.get('backupHandle'); })
+      .then(function (h) { if (h) { bkHandle = h; bkShow(''); } })
+      .catch(function () {});
+  }
+
   $('lExport').onclick = function () {
-    var data = { format: 'ampcoach-plays', version: 0, exported: new Date().toISOString(), plays: loadLib() };
+    var data = libData();
     download('ampcoach-library-' + new Date().toISOString().slice(0, 10) + '.json', new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' }));
+    markBackedUp();
   };
   $('lImport').onclick = function () { $('lFile').click(); };
   function num(v, d) { v = Number(v); return isFinite(v) ? clamp(v, -5, 65) : d; }
@@ -625,6 +731,8 @@ a.btnlink:hover { background:#0f3f22; }
   writeCard();
   renderCur();
   renderLib();
+  bkInit();
+  showRemind();
   window.__ampcoach = { get play() { return play; }, get cur() { return cur; } }; // test hook, no data leaves the page
 })();
 </script>
