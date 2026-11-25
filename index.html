@@ -164,8 +164,9 @@ a.btnlink:hover { background:#0f3f22; }
       <div class="bar" style="margin-top:8px">
         <button id="lExport" type="button">Export library (JSON)</button>
         <button id="lImport" type="button">Import JSON</button>
-        <input id="lFile" class="sr" type="file" accept="application/json,.json" aria-label="Import library file">
+        <input id="lFile" class="sr" type="file" aria-label="Import library file">
       </div>
+      <div id="libMsg" class="hint" role="status" aria-live="polite"></div>
       <p class="hint">Clearing browser data deletes the library. Export a copy to share plays or keep a backup.</p>
     </div>
     <div class="card" id="feedbackCard">
@@ -535,23 +536,46 @@ a.btnlink:hover { background:#0f3f22; }
     });
     return out;
   }
+  // Content signature of a play, ignoring id and timestamps, used to skip plays already in the library.
+  function sig(p) {
+    var s = sanitizePlay(p);
+    if (!s) return null;
+    delete s.id;
+    return JSON.stringify(s);
+  }
+  function libSay(m) { $('libMsg').textContent = m; }
   $('lFile').onchange = function (ev) {
     var file = ev.target.files && ev.target.files[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) { say('File too large (limit 2 MB).'); return; }
+    if (file.size > 2 * 1024 * 1024) { libSay('File too large (limit 2 MB).'); $('lFile').value = ''; return; }
     var r = new FileReader();
     r.onload = function () {
       try {
         var data = JSON.parse(r.result);
         var list = Array.isArray(data) ? data : data.plays;
         if (!Array.isArray(list)) throw new Error('no plays');
-        var lib = loadLib(), n = 0;
-        list.slice(0, 200).forEach(function (p) { var s = sanitizePlay(p); if (s) { lib.push(s); n++; } });
-        if (saveLib(lib)) say('Imported ' + n + ' play(s). Imported plays are marked unreviewed unless the file says coach-reviewed.');
+        var lib = loadLib(), n = 0, dup = 0, bad = 0;
+        var seen = {};
+        lib.forEach(function (p) { var k = sig(p); if (k) seen[k] = true; });
+        list.slice(0, 200).forEach(function (p) {
+          var s = sanitizePlay(p);
+          if (!s) { bad++; return; }
+          var k = sig(s);
+          if (seen[k]) { dup++; return; }
+          seen[k] = true; lib.push(s); n++;
+        });
+        var parts = [];
+        if (n) parts.push('Imported ' + n + ' play(s). Imported plays are marked unreviewed unless the file says coach-reviewed.');
+        if (dup) parts.push(dup + ' play(s) already in your library, skipped.');
+        if (bad) parts.push(bad + ' entry(ies) could not be read, skipped.');
+        if (!parts.length) parts.push('The file contains no plays.');
+        if (n === 0 || saveLib(lib)) libSay(parts.join(' '));
+        else libSay('Could not save to this browser (storage blocked or full).');
         renderLib();
-      } catch (e) { say('Could not read that file as a play library.'); }
+      } catch (e) { libSay('Could not read that file as a play library. Check that it is a file exported from this board.'); }
       $('lFile').value = '';
     };
+    r.onerror = function () { libSay('This browser could not open the file. Save it to the device first, then import it again.'); $('lFile').value = ''; };
     r.readAsText(file);
   };
 
